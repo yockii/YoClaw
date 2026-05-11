@@ -10,4 +10,4 @@ node_modules
 bin
 frontend/dist
 build/linux/appimage/build
-build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+build/windows/nsis/MicrosoftEdgeWebview2Setup.exe# Test commit from lili-dev branch via proxy
