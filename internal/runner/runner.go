@@ -16,6 +16,7 @@ import (
 	"github.com/yockii/wangshu/internal/tools/configtool"
 	"github.com/yockii/wangshu/internal/tools/location"
 	"github.com/yockii/wangshu/internal/tools/message"
+	"github.com/yockii/wangshu/internal/tools/skilltool"
 	"github.com/yockii/wangshu/internal/tools/sprite"
 	"github.com/yockii/wangshu/internal/tools/system"
 	"github.com/yockii/wangshu/internal/tools/task"
@@ -79,6 +80,10 @@ func RegisterTools() {
 	tools.GetDefaultToolRegistry().Register(sprite.NewSpriteTool())
 
 	tools.GetDefaultToolRegistry().Register(location.NewLocationTool())
+
+	// 注册技能管理工具
+	skillTool := skilltool.NewSkillTool()
+	tools.GetDefaultToolRegistry().Register(skillTool)
 }
 
 func Initialize() (*agent.Agent, error) {
@@ -93,6 +98,17 @@ func Initialize() (*agent.Agent, error) {
 	skills.InitializeSkillLoader()
 
 	defaultAgent = agent.InitializeAgentManager()
+
+	// 为所有Agent设置技能管理工具的引用
+	for name, ag := range agent.GetAllAgents() {
+		// 获取技能管理工具并设置Agent引用
+		if toolRegistry := tools.GetDefaultToolRegistry(); toolRegistry != nil {
+			if skillTool, ok := toolRegistry.GetTool("skill").(*skilltool.SkillTool); ok {
+				skillTool.SetAgent(ag)
+				slog.Debug("Set agent reference for skill tool", "agent", name)
+			}
+		}
+	}
 
 	InitializeChannels(defaultAgent)
 

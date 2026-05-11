@@ -107,7 +107,7 @@ func (a *Agent) checkAndCompressIfNeeded(sess *session.Session, afterLoop bool) 
 
 const maxMessagesWithImage = 3
 
-// buildMessages 构建发送给LLM的消息列表
+// buildMessages 构建发送给LLM的消息列表（优化版本）
 func (a *Agent) buildMessages(sess *session.Session) ([]llm.Message, error) {
 	sessionMessages := sess.GetMessages()
 
@@ -130,7 +130,8 @@ func (a *Agent) buildMessages(sess *session.Session) ([]llm.Message, error) {
 		runtime.GOOS, runtime.GOARCH, time.Now().Local().Format(time.RFC3339),
 	)
 
-	agentContextInfo := a.loadAgentContextInfo()
+	// 精简后的Agent上下文信息
+	agentContextInfo := a.loadAgentContextInfoOptimized()
 
 	systemContet := fmt.Sprintf(
 		constant.SystemPrompt,
@@ -141,19 +142,20 @@ func (a *Agent) buildMessages(sess *session.Session) ([]llm.Message, error) {
 		runtimeInfo,
 	)
 
+	// 添加会话类型信息
 	switch sess.ChatType {
 	case constant.ChatTypeP2P:
-		systemContet += "\n你当前在私聊会话中"
+		systemContet += "\n当前在私聊会话中"
 		if sess.SenderName != "" {
 			systemContet += fmt.Sprintf("，对方名称: %s", sess.SenderName)
 		}
 	case constant.ChatTypeGroup:
-		systemContet += "\n你当前在群聊会话中"
+		systemContet += "\n当前在群聊会话中"
 		if sess.ChatName != "" {
 			systemContet += fmt.Sprintf("，群名称: %s", sess.ChatName)
 		}
 	case constant.ChatTypeTopic:
-		systemContet += "\n你当前在话题会话中"
+		systemContet += "\n当前在话题会话中"
 	}
 
 	msgs = append(msgs, llm.Message{
@@ -212,22 +214,25 @@ func (a *Agent) buildMessages(sess *session.Session) ([]llm.Message, error) {
 	return msgs, nil
 }
 
-// loadAgentContextInfo 加载Agent的上下文信息（从profile目录）
-func (a *Agent) loadAgentContextInfo() string {
+// loadAgentContextInfoOptimized 优化后的Agent上下文信息加载
+// 只加载必要的Profile文件，大幅减少上下文大小
+func (a *Agent) loadAgentContextInfoOptimized() string {
 	content := ""
+
+	// 精简的Profile文件列表，只保留核心配置
 	mdFiles := []string{
-		constant.ProfileFileAgents,
-		constant.ProfileFileBootstrap,
-		// constant.ProfileFileHeartbeat,
-		// constant.ProfileFileIdentity,
-		// constant.ProfileFileSoul,
-		// constant.ProfileFileTools,
-		// constant.ProfileFileUser,
-		// constant.ProfileFileMemory,
-		constant.ProfileFileSprite,
+		constant.ProfileFileAgents,    // Agent配置
+		constant.ProfileFileBootstrap, // 启动配置
+		// 以下文件已移除，减少上下文大小：
+		// constant.ProfileFileHeartbeat - 心跳机制（未实现）
+		// constant.ProfileFileIdentity - 身份定义（合并到AGENTS.md）
+		// constant.ProfileFileSoul - 个性设置（可选，按需加载）
+		// constant.ProfileFileTools - 工具定义（已在工具系统中定义）
+		// constant.ProfileFileUser - 用户偏好（合并到AGENTS.md）
+		// constant.ProfileFileMemory - 记忆管理（独立系统处理）
+		// constant.ProfileFileSprite - 桌宠设置（仅在Live2D启用时加载）
 	}
-	needSoul := false
-	bootstraped := false
+
 	for _, fileName := range mdFiles {
 		fp := filepath.Join(a.workspaceDir, constant.DirProfile, fileName)
 		mdFile, err := filepath.Abs(fp)
@@ -235,32 +240,28 @@ func (a *Agent) loadAgentContextInfo() string {
 			continue
 		}
 
+		// 跳过不存在的文件或目录
 		if fi, err := os.Stat(mdFile); err != nil {
-			if fileName == constant.ProfileFileBootstrap && os.IsNotExist(err) {
-				bootstraped = true
-			}
 			continue
 		} else if fi.IsDir() {
 			continue
 		}
+
 		data, err := os.ReadFile(fp)
 		if err != nil {
 			continue
 		}
 
-		if fileName == constant.ProfileFileSprite && (!config.DefaultCfg.Live2D.Enabled || !variable.Live2DVisible) {
-			continue
-		}
-
-		content += fmt.Sprintf("\n## %s\n%s\n", mdFile, string(data))
-		if fileName == constant.ProfileFileSoul {
-			needSoul = true
-		}
-
+		// 添加到上下文
+		content += fmt.Sprintf("\n## %s\n%s\n", fileName, string(data))
 	}
 
-	if bootstraped && needSoul {
-		content += "\n因存在SOUL.md文件，需体现其人格特质与语气风格。避免生硬、千篇一律的回复；遵循其指导原则，除非有更高优先级指令覆盖。\n"
+	// 仅在Live2D启用且可见时加载Sprite配置
+	if config.DefaultCfg.Live2D.Enabled && variable.Live2DVisible {
+		spritePath := filepath.Join(a.workspaceDir, constant.DirProfile, constant.ProfileFileSprite)
+		if data, err := os.ReadFile(spritePath); err == nil {
+			content += fmt.Sprintf("\n## %s\n%s\n", constant.ProfileFileSprite, string(data))
+		}
 	}
 
 	return content
