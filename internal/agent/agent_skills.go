@@ -237,3 +237,18 @@ func (a *Agent) CreateSkillFromConversation(conversationText, skillName, descrip
 
 	return result, nil
 }
+
+// RecordSkillUsage 记录技能使用情况（用于生命周期管理）
+// 参数：skillName(技能名称), success(是否成功)
+func (a *Agent) RecordSkillUsage(skillName string, success bool) {
+	lifecycle := skills.NewSkillLifecycleManager(a.workspaceDir)
+
+	if err := lifecycle.LoadStats(); err != nil {
+		slog.Warn("Failed to load skill stats", "error", err)
+		return
+	}
+
+	if err := lifecycle.RecordUsage(skillName, success); err != nil {
+		slog.Warn("Failed to record skill usage", "skill", skillName, "error", err)
+	}
+}
